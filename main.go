@@ -45,12 +45,6 @@ const (
 	screenWidth  = 300
 	screenHeight = 300
 
-	gridWidth   = 8
-	gridHeight  = 8
-	gridSpacing = 25
-	lineLength  = 20
-	randomLines = 5
-
 	postURL = "https://p6drad-teel.net/~windo/mtexp/post.php"
 )
 
@@ -83,8 +77,9 @@ type Experiment struct {
 	preDelay    time.Duration
 	displayTime time.Duration
 	postDelay   time.Duration
-	image       *ebiten.Image
+	image       image.Image
 	expect      int
+	question    string
 
 	startTime           time.Time
 	displayStartTime    time.Time
@@ -110,12 +105,16 @@ func (e *Experiment) Update(screen *ebiten.Image) error {
 			log.Printf("Experiment")
 			e.displayStartTime = time.Now()
 		}
+		img, err := ebiten.NewImageFromImage(e.image, ebiten.FilterDefault)
+		if err != nil {
+			return err
+		}
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(
-			float64(screen.Bounds().Max.X-e.image.Bounds().Max.X)/2,
-			float64(screen.Bounds().Max.Y-e.image.Bounds().Max.Y)/2,
+			float64(screen.Bounds().Max.X-img.Bounds().Max.X)/2,
+			float64(screen.Bounds().Max.Y-img.Bounds().Max.Y)/2,
 		)
-		screen.DrawImage(e.image, opts)
+		screen.DrawImage(img, opts)
 		return nil
 	}
 
@@ -132,78 +131,17 @@ func (e *Experiment) Update(screen *ebiten.Image) error {
 	return nil
 }
 
-func NewExperiment() {
-	experiment = &Experiment{
-		preDelay:    500 * time.Millisecond,
-		postDelay:   100 * time.Millisecond,
-		displayTime: 90 * time.Millisecond,
-		expect:      rand.Intn(2) + 1,
-	}
-	idx++
-
-	grid := [gridWidth][gridHeight]int{}
-
-	for i := 0; i < randomLines; i++ {
-		x := rand.Intn(gridWidth)
-		y := rand.Intn(gridHeight)
-		grid[x][y] = 1
-		x = rand.Intn(gridWidth)
-		y = rand.Intn(gridHeight)
-		grid[x][y] = 2
-	}
-	if experiment.expect == 1 {
-		x := rand.Intn(gridWidth)
-		y := rand.Intn(gridHeight)
-		grid[x][y] = 3
-	}
-
-	// Draw the experiment
-	img := image.NewRGBA(image.Rect(0, 0, gridWidth*gridSpacing, gridHeight*gridSpacing))
-	gc := draw2dimg.NewGraphicContext(img)
-
-	gc.SetLineWidth(2)
-	for x := 0; x < gridWidth; x++ {
-		for y := 0; y < gridHeight; y++ {
-			var xoff, yoff, xdiff, ydiff int
-			gc.BeginPath()
-			switch grid[x][y] {
-			case 0:
-				continue
-			case 1:
-				gc.SetStrokeColor(color.RGBA{0xff, 0x00, 0x00, 0xff})
-				xoff = -lineLength / 2
-				xdiff = lineLength / 2
-			case 2:
-				gc.SetStrokeColor(color.RGBA{0x00, 0x00, 0xff, 0xff})
-				yoff = -lineLength / 2
-				ydiff = lineLength / 2
-			case 3:
-				gc.SetStrokeColor(color.RGBA{0xff, 0x00, 0x00, 0xff})
-				yoff = -lineLength / 2
-				ydiff = lineLength / 2
-			}
-			translate := func(grid, offset int) float64 {
-				return float64(grid*gridSpacing+offset) + gridSpacing/2
-			}
-			gc.MoveTo(translate(x, xoff), translate(y, yoff))
-			gc.LineTo(translate(x, xdiff), translate(y, ydiff))
-			gc.Stroke()
-		}
-	}
-	gc.Close()
-	experiment.image, _ = ebiten.NewImageFromImage(img, ebiten.FilterDefault)
-
-	if *imagesDirectory != "" {
-		draw2dimg.SaveToPngFile(fmt.Sprintf(
-			"%s/impression-%s-%d-%d.png",
-			*imagesDirectory, experimentID, epoch, idx,
-		), img)
-	}
-}
-
 func Greet(screen *ebiten.Image) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		NewExperiment()
+		experiment = NewExperiment()
+		idx++
+
+		if *imagesDirectory != "" {
+			draw2dimg.SaveToPngFile(fmt.Sprintf(
+				"%s/impression-%s-%d-%d.png",
+				*imagesDirectory, experimentID, epoch, idx,
+			), experiment.image)
+		}
 		page = ShowExperiment
 	}
 
@@ -222,7 +160,7 @@ func Greet(screen *ebiten.Image) error {
 func GetReading(screen *ebiten.Image) error {
 	blankWithFix(screen)
 	text.Draw(screen, fmt.Sprintf("Experiment #%d", idx), face, 25, 240, color.White)
-	text.Draw(screen, "Was there a red vertical line?", face, 25, 260, color.White)
+	text.Draw(screen, experiment.question, face, 25, 260, color.White)
 	text.Draw(screen, "Press 1 (yes) or 2 (no)", face, 25, 280, color.White)
 
 	reading := 0
